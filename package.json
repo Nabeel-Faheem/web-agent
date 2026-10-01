@@ -15,7 +15,8 @@
     "eval": "npx lmnr eval",
     "eval:file-tools": "npx lmnr eval evals/file-tools.eval.ts",
     "eval:shell-tools": "npx lmnr eval evals/shell-tools.eval.ts",
-    "eval:agent": "npx lmnr eval evals/agent-multiturn.eval.ts"
+    "eval:agent": "npx lmnr eval evals/agent-multiturn.eval.ts",
+    "agent:update": "npm run build && npm install -g ."
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.7",
