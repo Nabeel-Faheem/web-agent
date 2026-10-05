@@ -8,7 +8,8 @@ import type {
   MultiTurnEvalData,
   MultiTurnResult,
 } from "./types.ts";
-import { buildMessages } from "./utils";
+import { buildMessages, buildMockedTools } from "./utils";
+import { SYSTEM_PROMPT } from "../src/agent/system/prompt.ts";
 
 // these executors are the test runners around different evaluations like file-tools.json, shell-tools.json etc.
 // will not execute the tools rather mock them just like test driven development - we don't need to call tools realistically causing the executors to be slow
@@ -102,5 +103,58 @@ export const executeSingleTurnWithMocks = async (data: EvalData) => {
     calls,
     toolNames,
     selectedAny: toolNames.length > 0,
+  };
+};
+
+// execute multi-turn conversation with mocks
+export const executeMultiTurnWithMocks = async (data: MultiTurnEvalData) => {
+  // prepare mock tools that will be passed to the LLM
+  const tools = buildMockedTools(data.mockTools);
+
+  // prepare messages that will be passed to the LLM
+  const messages = data.messages ?? [
+    {
+      role: "system",
+      content: SYSTEM_PROMPT,
+    },
+    {
+      role: "user",
+      content: data.prompt!,
+    },
+  ];
+
+  // mock the agent loop to handle tool calls and LLM responses - using vercel ai library's built-in agent loop without writing custom loop
+  // the loop is turned on by adding stopWhen
+  const result = await generateText({
+    model: openai.chat(data?.config?.model ?? "gemini-2.5-flash"),
+    messages,
+    tools,
+    stopWhen: stepCountIs(data?.config?.maxSteps ?? 20), // stop on max steps
+  });
+
+  // prepare the data to return to the caller - this is the data that will be used for evaluation
+  const toolCallOrder: string[] = [];
+  const steps = result.steps.map((step) => ({
+    toolCalls: step.toolCalls?.map((toolCall) => {
+      toolCallOrder.push(toolCall.toolName);
+      return {
+        toolName: toolCall.toolName,
+        args: "args" in toolCall ? toolCall.args : {},
+      };
+    }),
+    toolResults: step.staticToolResults?.map((toolResult) => ({
+      toolName: toolResult.toolName,
+      result: "results" in toolResult ? toolResult.results : toolResult,
+    })),
+    text: step.text,
+  }));
+
+  const toolsUsed = new Set(toolCallOrder);
+
+  return {
+    text: result.text,
+    steps,
+    toolsUsed,
+    toolCallOrder,
   };
 };
