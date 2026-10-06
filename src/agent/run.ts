@@ -12,6 +12,8 @@ import { filterCompatibleMessages } from "./system/filterMessages.ts";
 const MODEL_NAME = DEFAULT_MODEL;
 Laminar.initialize({
   projectApiKey: process.env.LMNR_PROJECT_API_KEY,
+  // export traces over HTTPS (443) instead of gRPC (8443), which is blocked on this network
+  forceHttp: true,
 });
 
 export const runAgent = async (
@@ -44,6 +46,8 @@ export const runAgent = async (
       messages,
       allowSystemInMessages: true,
       tools,
+      // needed to see Groq's `executed_tools` (provider-run web search), which the SDK doesn't surface as tool-call chunks
+      includeRawChunks: true,
       experimental_telemetry: {
         isEnabled: true,
         tracer: getTracer(),
@@ -73,6 +77,20 @@ export const runAgent = async (
           });
 
           callbacks.onToolCallStart(chunk.toolName, input);
+        }
+
+        // provider-executed web search: Groq sends each step twice, first without `output` (started), then with it (done)
+        if (chunk.type === "raw") {
+          const executedTools =
+            (chunk.rawValue as any)?.choices?.[0]?.delta?.executed_tools ?? [];
+
+          for (const executedTool of executedTools) {
+            if (executedTool.output === undefined) {
+              callbacks.onToolCallStart("webSearch", executedTool.arguments);
+            } else {
+              callbacks.onToolCallEnd("webSearch", executedTool.output);
+            }
+          }
         }
       }
     } catch (err) {
