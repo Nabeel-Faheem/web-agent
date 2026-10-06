@@ -20,6 +20,11 @@ const MODEL_LIMITS: Record<string, ModelLimits> = {
     outputLimit: 128000,
     contextWindow: 400000,
   },
+  "openai/gpt-oss-120b": {
+    inputLimit: 50000,
+    outputLimit: 81072,
+    contextWindow: 131072,
+  },
 };
 
 /**
@@ -47,6 +52,11 @@ export function getModelLimits(model: string): ModelLimits {
     return MODEL_LIMITS["gpt-5"];
   }
 
+  // Check for gpt-oss variants
+  if (model.startsWith("openai/gpt-oss")) {
+    return MODEL_LIMITS["openai/gpt-oss-120b"];
+  }
+
   return DEFAULT_LIMITS;
 }
 
@@ -58,7 +68,7 @@ export function isOverThreshold(
   contextWindow: number,
   threshold: number = DEFAULT_THRESHOLD,
 ): boolean {
-  return false;
+  return totalTokens >= contextWindow * threshold;
 }
 
 /**
@@ -68,5 +78,5 @@ export function calculateUsagePercentage(
   totalTokens: number,
   contextWindow: number,
 ): number {
-  return 0;
+  return (totalTokens / contextWindow) * 100;
 }

@@ -8,6 +8,14 @@ import type { AgentCallbacks, ToolCallInfo } from "../types.ts";
 import { tools } from "./tools/index.ts";
 import { executeTool } from "./executeTool.ts";
 import { filterCompatibleMessages } from "./system/filterMessages.ts";
+import {
+  estimateMessagesTokens,
+  getModelLimits,
+  isOverThreshold,
+  calculateUsagePercentage,
+  compactConversation,
+  DEFAULT_THRESHOLD,
+} from "./context/index.ts";
 
 const MODEL_NAME = DEFAULT_MODEL;
 Laminar.initialize({
@@ -21,12 +29,14 @@ export const runAgent = async (
   conversationHistory: ModelMessage[] = [],
   callbacks: AgentCallbacks = {} as AgentCallbacks,
 ): Promise<ModelMessage[]> => {
+  const modelLimits = getModelLimits(MODEL_NAME);
+
   // remove the messages that are not compatible with the model
   const workingHistory: ModelMessage[] =
     filterCompatibleMessages(conversationHistory);
 
   // prepare messages to be sent to the LLM
-  const messages = [
+  let messages = [
     {
       role: "system",
       content: SYSTEM_PROMPT,
@@ -37,6 +47,13 @@ export const runAgent = async (
       content: userMessage,
     },
   ] as ModelMessage[];
+
+  // check conversation threshold
+  const precheckedTokens = estimateMessagesTokens(messages);
+  if (isOverThreshold(precheckedTokens.total, modelLimits.contextWindow)) {
+    // compact messages
+    messages = await compactConversation(messages, MODEL_NAME);
+  }
 
   // setup agent loop to handle tool calls and LLM responses
   let fullResponse = "";
@@ -53,6 +70,23 @@ export const runAgent = async (
         tracer: getTracer(),
       },
     });
+
+    const reportTokenUsage = () => {
+      if (callbacks.onTokenUsage) {
+        const usage = estimateMessagesTokens(messages);
+        callbacks.onTokenUsage({
+          inputTokens: usage.input,
+          outputTokens: usage.output,
+          totalTokens: usage.total,
+          contextWindow: modelLimits.contextWindow,
+          threshold: DEFAULT_THRESHOLD,
+          percentage: calculateUsagePercentage(
+            usage.total,
+            modelLimits.contextWindow,
+          ),
+        });
+      }
+    };
 
     const toolCalls: ToolCallInfo[] = [];
     let currentText = "";
@@ -118,6 +152,7 @@ export const runAgent = async (
     // handle the scenario when there were no tool calls
     if (reasonToFinish !== "tool-calls" || toolCalls.length === 0) {
       messages.push(...resMessages);
+      reportTokenUsage();
       break;
     }
 
@@ -144,6 +179,7 @@ export const runAgent = async (
           },
         ],
       });
+      reportTokenUsage();
     }
   }
 

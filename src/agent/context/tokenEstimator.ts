@@ -4,6 +4,7 @@ import type { ModelMessage } from "ai";
  * Estimate token count from text using simple character division.
  * Uses 3.75 as the divisor (midpoint of 3.5-4 range).
  * This is an approximation - not exact tokenization.
+ * For exact token counts, use a tokenizer library like tiktoken.
  */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 3.75);
@@ -23,8 +24,13 @@ export function extractMessageText(message: ModelMessage): string {
       .map((part) => {
         if (typeof part === "string") return part;
         if ("text" in part && typeof part.text === "string") return part.text;
-        if ("value" in part && typeof part.value === "string") return part.value;
-        if ("output" in part && typeof part.output === "object" && part.output) {
+        if ("value" in part && typeof part.value === "string")
+          return part.value;
+        if (
+          "output" in part &&
+          typeof part.output === "object" &&
+          part.output
+        ) {
           const output = part.output as Record<string, unknown>;
           if ("value" in output && typeof output.value === "string") {
             return output.value;
