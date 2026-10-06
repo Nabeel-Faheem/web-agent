@@ -1,5 +1,5 @@
 import { generateText, stepCountIs, tool, type ToolSet } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { groqModel } from "../src/agent/groq.ts";
 import { z } from "zod";
 
 import type {
@@ -81,10 +81,10 @@ export const executeSingleTurnWithMocks = async (data: EvalData) => {
   }
 
   // call LLM with the prepared tools, messages and config
-  // openai.chat() because the responses API (default in v2) isn't supported by gemini's OpenAI-compatible endpoint
   const { toolCalls } = await generateText({
-    model: openai.chat(data?.config?.model ?? "gemini-2.5-flash"),
+    model: groqModel(data?.config?.model),
     messages,
+    allowSystemInMessages: true,
     tools,
     stopWhen: stepCountIs(1), // stop on single turn
     temperature: data?.config?.temperature ?? undefined,
@@ -126,8 +126,9 @@ export const executeMultiTurnWithMocks = async (data: MultiTurnEvalData) => {
   // mock the agent loop to handle tool calls and LLM responses - using vercel ai library's built-in agent loop without writing custom loop
   // the loop is turned on by adding stopWhen
   const result = await generateText({
-    model: openai.chat(data?.config?.model ?? "gemini-2.5-flash"),
+    model: groqModel(data?.config?.model),
     messages,
+    allowSystemInMessages: true,
     tools,
     stopWhen: stepCountIs(data?.config?.maxSteps ?? 20), // stop on max steps
   });

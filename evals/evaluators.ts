@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { groqModel } from "../src/agent/groq.ts";
 import { z } from "zod";
 
 import type {
@@ -60,12 +60,10 @@ export const getJudgedByLLM = async (
 ) => {
   // it's the same like generateText but it is used to get the strucuted output from the LLM
   const { object } = await generateObject({
-    model: openai.chat("gemini-2.5-flash"),
+    model: groqModel(),
     schema: judgeSchema,
     schemaName: "evaluation",
     schemaDescription: "Evaluation of an AI agent response",
-    // plain JSON mode: Gemini's OpenAI-compatible endpoint is picky about json_schema response_format
-    mode: "json",
     messages: [
       {
         role: "system",

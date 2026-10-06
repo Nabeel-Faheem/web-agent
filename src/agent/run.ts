@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { streamText, type ModelMessage } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { groqModel, DEFAULT_MODEL } from "./groq.ts";
 import { getTracer, Laminar } from "@lmnr-ai/lmnr";
 
 import { SYSTEM_PROMPT } from "./system/prompt.ts";
@@ -9,7 +9,7 @@ import { tools } from "./tools/index.ts";
 import { executeTool } from "./executeTool.ts";
 import { filterCompatibleMessages } from "./system/filterMessages.ts";
 
-const MODEL_NAME = "gemini-2.5-flash";
+const MODEL_NAME = DEFAULT_MODEL;
 Laminar.initialize({
   projectApiKey: process.env.LMNR_PROJECT_API_KEY,
 });
@@ -40,8 +40,9 @@ export const runAgent = async (
   let fullResponse = "";
   while (true) {
     const { fullStream, finishReason, response } = streamText({
-      model: openai.chat(MODEL_NAME),
+      model: groqModel(MODEL_NAME),
       messages,
+      allowSystemInMessages: true,
       tools,
       experimental_telemetry: {
         isEnabled: true,
