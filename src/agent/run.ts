@@ -18,6 +18,11 @@ import {
 } from "./context/index.ts";
 
 const MODEL_NAME = DEFAULT_MODEL;
+
+// strip `execute` so the SDK only reports tool calls instead of running them before the user approves
+const toolSchemas = Object.fromEntries(
+  Object.entries(tools).map(([name, { execute, ...schema }]) => [name, schema]),
+) as typeof tools;
 Laminar.initialize({
   projectApiKey: process.env.LMNR_PROJECT_API_KEY,
   // export traces over HTTPS (443) instead of gRPC (8443), which is blocked on this network
@@ -62,7 +67,7 @@ export const runAgent = async (
       model: groqModel(MODEL_NAME),
       messages,
       allowSystemInMessages: true,
-      tools,
+      tools: toolSchemas,
       // needed to see Groq's `executed_tools` (provider-run web search), which the SDK doesn't surface as tool-call chunks
       includeRawChunks: true,
       experimental_telemetry: {
@@ -160,7 +165,33 @@ export const runAgent = async (
     messages.push(...resMessages);
 
     // execute the tool calls and get the results
+    let isDisapproved = false;
     for (const toolCall of toolCalls) {
+      // asynchronous approval check for every tool call (skipped once the user has denied one)
+      const isApproved =
+        !isDisapproved &&
+        (await callbacks.onToolApproval(toolCall.toolName, toolCall.args));
+
+      // tell the LLM the call was denied so it asks again next time instead of assuming it ran
+      if (!isApproved) {
+        isDisapproved = true;
+        messages.push({
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: toolCall.toolCallId,
+              toolName: toolCall.toolName,
+              output: {
+                type: "text",
+                value: "The user denied this tool call, it was not executed",
+              },
+            },
+          ],
+        });
+        continue;
+      }
+
       // execute the current tool
       const result = await executeTool(toolCall.toolName, toolCall.args);
 
@@ -180,6 +211,10 @@ export const runAgent = async (
         ],
       });
       reportTokenUsage();
+    }
+
+    if (isDisapproved) {
+      break;
     }
   }
 
